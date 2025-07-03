@@ -1,7 +1,7 @@
 // ignore_for_file: library_private_types_in_public_api
 
 import 'dart:io';
-
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -26,6 +26,12 @@ class MyApp extends StatelessWidget {
       home: PhotocardHomePage(),
     );
   }
+}
+
+Future<String> calculateImageHash(File file) async {
+  final bytes = await file.readAsBytes();
+  final digest = md5.convert(bytes);
+  return digest.toString();
 }
 
 class PhotocardHomePage extends StatelessWidget {
@@ -106,7 +112,7 @@ class _AddPhotocardPageState extends State<AddPhotocardPage> {
     }
   }
 
-  void _saveCard() {
+  void _saveCard() async {
     if (_imageFile == null ||
         _titleController.text.trim().isEmpty ||
         _numberController.text.trim().isEmpty) {
@@ -115,15 +121,40 @@ class _AddPhotocardPageState extends State<AddPhotocardPage> {
       );
       return;
     }
+
+    String newImageHash = await calculateImageHash(_imageFile!);
+
+    if(!mounted) return;
+    final cardBox = Hive.box<Photocard>('photocards');
+    bool isDuplicate = false;
+
+    for (var card in cardBox.values) {
+      String existingHash = await calculateImageHash(File(card.imagePath));
+      if (!mounted) return;
+      if (existingHash == newImageHash) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (isDuplicate) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('呢張相已經儲存咗喺你個library入面！')),
+      );
+      return;
+    }
+
     final card = Photocard(
       imagePath: _imageFile!.path,
       title: _titleController.text.trim(),
       number: _numberController.text.trim(),
     );
-    final cardBox = Hive.box<Photocard>('photocards');
     cardBox.add(card);
+    if (!mounted) return;
     Navigator.pop(context); // go back to main page
   }
+
 
   @override
   Widget build(BuildContext context) {
